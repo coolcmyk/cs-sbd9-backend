@@ -1,0 +1,300 @@
+require('dotenv').config();
+const express = require('express');
+const { Pool } = require('pg');
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+const pool = new Pool({
+    connectionString: process.env.PG_CONNECTION_STRING,
+    ssl: { rejectUnauthorized: false }
+});
+
+app.use(express.json());
+
+// GET /store/getAll
+app.get('/store/getAll', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM stores ORDER BY created_at DESC');
+        res.json({
+            success: true,
+            message: "Stores found",
+            payload: result.rows
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message, payload: null });
+    }
+});
+
+// POST /store/create
+app.post('/store/create', async (req, res) => {
+    const { id, name, address } = req.body;
+    
+    if (!id || !name || !address) {
+        return res.status(400).json({
+            success: false,
+            message: "Missing store id, name, or address",
+            payload: null
+        });
+    }
+
+    try {
+        const result = await pool.query(
+            'INSERT INTO stores (id, name, address) VALUES ($1, $2, $3) RETURNING *',
+            [id, name, address]
+        );
+        res.status(201).json({
+            success: true,
+            message: "Store created",
+            payload: result.rows[0]
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message, payload: null });
+    }
+});
+
+
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+});
+
+
+
+// GET /store/:id 
+app.get('/store/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const result = await pool.query('SELECT * FROM stores WHERE id = $1', [id]);
+        if (result.rows.length > 0) {
+            res.json({
+                success: true,
+                message: "Store found",
+                data: result.rows[0]
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                message: "Store not found",
+                data: null
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message, data: null });
+    }
+});
+
+// DELETE /store/:id
+app.delete('/store/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const result = await pool.query('DELETE FROM stores WHERE id = $1 RETURNING *', [id]);
+        if (result.rows.length > 0) {
+            res.json({
+                success: true,
+                message: "Store deleted",
+                data: result.rows[0]
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                message: "Store not found",
+                data: null
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message, data: null });
+    }
+});
+
+
+
+// PUT /store
+app.put('/store', async (req, res) => {
+    const { id, name, address } = req.body;
+    
+    if (!id || !name || !address) {
+        return res.status(400).json({
+            success: false,
+            message: "Missing store id, name, or address",
+            payload: null
+        });
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE stores SET name = $2, address = $3 WHERE id = $1 RETURNING *',
+            [id, name, address]
+        );
+        if (result.rows.length > 0) {
+            res.json({
+                success: true,
+                message: "Store updated",
+                payload: result.rows[0]
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                message: "Store not found",
+                payload: null
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message, payload: null });
+    }
+});
+
+
+
+// POST /user/register
+app.post('/user/register', async (req, res) => {
+    const { email, password, name } = req.query;
+    
+    if (!email || !password || !name) {
+        return res.status(400).json({
+            success: false,
+            message: "Missing email, password, or name",
+            payload: null
+        });
+    }
+
+    try {
+        // Check if the email is already used
+        const checkEmail = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (checkEmail.rows.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Email already used",
+                payload: null
+            });
+        }
+
+        const result = await pool.query(
+            'INSERT INTO users (email, password, name) VALUES ($1, $2, $3) RETURNING *',
+            [email, password, name]
+        );
+        res.status(201).json({
+            success: true,
+            message: "User registered",
+            payload: result.rows[0]
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message, payload: null });
+    }
+});
+
+
+// POST /user/login
+app.post('/user/login', async (req, res) => {
+    const { email, password } = req.query;
+    
+    if (!email || !password) {
+        return res.status(400).json({
+            success: false,
+            message: "Missing email or password",
+            payload: null
+        });
+    }
+
+    try {
+        // Check if the email and password match an existing user
+        const result = await pool.query('SELECT * FROM users WHERE email = $1 AND password = $2', [email, password]);
+        if (result.rows.length > 0) {
+            res.json({
+                success: true,
+                message: "Login success",
+                payload: result.rows[0]
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                message: "Invalid email or password",
+                payload: null
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message, payload: null });
+    }
+});
+
+
+// GET /user/:email 
+app.get('/user/:email', async (req, res) => {
+    try {
+        const email = req.params.email;
+        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (result.rows.length > 0) {
+            res.json({
+                success: true,
+                message: "User found",
+                payload: result.rows[0]
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                message: "User not found",
+                data: null
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message, data: null });
+    }
+});
+
+
+// PUT /user
+app.put('/user', async (req, res) => {
+    const { id, email, password, name } = req.body;
+    
+    if (!id || !email || !password || !name) {
+        return res.status(400).json({
+            success: false,
+            message: "Missing user id, email, password, or name",
+            payload: null
+        });
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE users SET email = $2, password = $3, name = $4 WHERE id = $1 RETURNING *',
+            [id, email, password, name]
+        );
+        if (result.rows.length > 0) {
+            res.json({
+                success: true,
+                message: "User updated",
+                payload: result.rows[0]
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                message: "User not found",
+                payload: null
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message, payload: null });
+    }
+});
+
+// DELETE /user/:id
+app.delete('/user/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING *', [id]);
+        if (result.rows.length > 0) {
+            res.json({
+                success: true,
+                message: "User deleted",
+                data: result.rows[0]
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                message: "User not found",
+                data: null
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message, data: null });
+    }
+});
